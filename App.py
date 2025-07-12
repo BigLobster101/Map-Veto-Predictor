@@ -79,3 +79,4 @@ elif simulation_type == "You vs Team":
             if m in remaining:
                 st.write(f"Opponent likely bans/picks: **{m}**")
                 break
+
