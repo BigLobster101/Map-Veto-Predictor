@@ -50,83 +50,83 @@ with tab2:
     else:
         df.columns = df.columns.str.strip()
 
-        # Input for sim teams
         team1_sim = st.text_input("Team 1 for simulation", value="Team A")
         team2_sim = st.text_input("Team 2 for simulation", value="Team B")
 
-        # Define weights for BO1 and BO3
+        ban_style = st.selectbox("Ban Style", options=["BO1", "BO3"], index=0)
+
         BO1_WEIGHTS = [-9, -8, -7, -6, -5, -4, -3, -2, 0]
         BO3_WEIGHTS = [-5, -4, -3, -2, 2, 3, 4, 5, 0]
 
         def get_weights(ban_style):
             return BO1_WEIGHTS if ban_style.upper() == "BO1" else BO3_WEIGHTS
 
-        # Calculate global preference scores per team and map
+        weights = get_weights(ban_style)
+
+        # Initialize data structures
         team_map_scores = {}
         team_game_counts = {}
 
-        # Initialize teams found in data
         all_teams = pd.unique(df[['Team 1', 'Team 2']].values.ravel())
 
         for team in all_teams:
             team_map_scores[team] = {m: 0 for m in map_pool}
             team_game_counts[team] = 0
 
-        # Process every row to accumulate scores per team
+        # Accumulate weighted scores for each map per team
         for _, row in df.iterrows():
-            weights = get_weights(row["Ban Style"])
-            # Each team in this row played a game
+            row_weights = get_weights(row["Ban Style"])
+            # Both teams played this match
             for team in [row["Team 1"], row["Team 2"]]:
                 team_game_counts[team] += 1
-
-            # For each veto step, assign weighted scores to both teams for the banned/picked map
             for i in range(1, 10):
                 map_name = row.get(f"Veto {i}", "")
                 if map_name not in map_pool:
                     continue
-                # Both teams get score updated (assuming both care about ban order)
-                team_map_scores[row["Team 1"]][map_name] += weights[i-1]
-                team_map_scores[row["Team 2"]][map_name] += weights[i-1]
+                # Add weight for both teams for this veto step map
+                team_map_scores[row["Team 1"]][map_name] += row_weights[i-1]
+                team_map_scores[row["Team 2"]][map_name] += row_weights[i-1]
 
-        # Normalize scores by number of games played per team to get averages
+        # Calculate average weighted preference per map per team
         for team in team_map_scores:
             count = team_game_counts.get(team, 1)
             if count > 0:
                 for map_name in team_map_scores[team]:
                     team_map_scores[team][map_name] /= count
 
-        # Convert to DataFrame for easier use
         df_scores = pd.DataFrame(team_map_scores).fillna(0)
 
         st.header(f"Map Preferences and Ban Simulation: {team1_sim} vs {team2_sim}")
 
-        # Show preference charts for both teams
+        # Show bar charts with scores for both teams
         for team in [team1_sim, team2_sim]:
             if team not in df_scores.columns:
-                st.warning(f"No data for team '{team}', showing zero preferences.")
+                st.warning(f"No data for team '{team}', showing zeros.")
                 scores = pd.Series([0]*len(map_pool), index=map_pool)
             else:
                 scores = df_scores[team]
 
-            st.subheader(f"{team} Map Preferences (average weighted score)")
+            st.subheader(f"{team} Map Preferences (avg weighted score)")
             st.bar_chart(scores.sort_values(ascending=False))
+
+            # Show the raw preference values for debugging
+            st.write(scores.sort_values(ascending=False))
 
         st.subheader("Simulated Ban Phase")
 
-        # Start with full map pool available
         available_maps = set(map_pool)
         bans = []
 
-        banning_order = [team1_sim, team2_sim] * 4  # alternate bans max 8 bans
+        banning_order = [team1_sim, team2_sim] * 4  # up to 8 bans alternating
 
         for banning_team in banning_order:
             if banning_team not in df_scores.columns:
-                # No data for this team, ban random map
+                # No data, ban lowest alphabetically
                 ban_map = sorted(available_maps)[0]
+                st.write(f"Warning: No data for {banning_team}, banning {ban_map} randomly")
             else:
                 team_pref = df_scores[banning_team].loc[df_scores.index.isin(available_maps)]
-                # Ban the map with lowest preference score (least liked)
-                ban_map = team_pref.idxmin()
+                ban_map = team_pref.idxmin()  # ban the map with lowest score
 
             bans.append((banning_team, ban_map))
             available_maps.remove(ban_map)
