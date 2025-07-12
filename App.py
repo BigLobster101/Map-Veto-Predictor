@@ -12,8 +12,8 @@ map_pool = [
 
 # Step weights for veto positions (can tweak later)
 step_weights = {
-    "BO1": [-3, -2, -1, -3, -2, -1, 0],
-    "BO3": [-3, -2, -1, +3, +2, -3, -2, -1, 0]
+    "BO1": [-5, -5, -4, -4, -2, -2, -1, -1, 0],
+    "BO3": [-5, -5, -4, -4, +3, +3, -1, -1, 0]
 }
 
 # File uploader
