@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 from io import StringIO
-import numpy as np
 
 # Map pool
 map_pool = [
@@ -78,11 +77,6 @@ with tab2:
             st.header(f"Team Map Preferences & Ban Simulation: {team1_sim} vs {team2_sim}")
 
             # Define weights for BO1 and BO3 for 9 veto steps
-            # Earlier bans: stronger negative weights
-            # Picks: positive weights
-            # Floating or unpicked maps: 0 weight (neutral)
-            # You can tweak these weights to fit your logic
-
             BO1_WEIGHTS = [-9, -8, -7, -6, -5, -4, -3, -2, 0]  # Early ban = -9, last map left = 0
             BO3_WEIGHTS = [-5, -4, -3, -2, 2, 3, 4, 5, 0]     # Example weights for BO3 ban/pick order
 
@@ -111,7 +105,6 @@ with tab2:
                     if not map_name or map_name not in map_pool:
                         continue
 
-                    # Corrected lines with proper quotes
                     if row["Team 1"] in team_scores:
                         team_scores[row["Team 1"]][map_name] += weights[i-1]
 
@@ -141,4 +134,25 @@ with tab2:
             bans = []
 
             # Alternate banning starting with Team 1
-            banning_order = [tea]()_
+            banning_order = [team1_sim, team2_sim] * 4  # max 8 bans possible, for BO3 or BO1
+
+            for banning_team in banning_order:
+                # From available maps, ban the map with lowest preference score for banning team
+                team_pref = df_scores[banning_team]
+                # Filter to only available maps
+                team_pref = team_pref.loc[team_pref.index.isin(available_maps)]
+                if team_pref.empty:
+                    break
+
+                # Map with lowest preference (lowest score)
+                ban_map = team_pref.idxmin()
+                bans.append((banning_team, ban_map))
+                available_maps.remove(ban_map)
+
+                st.write(f"**{banning_team} bans:** {ban_map}")
+
+                # Stop if only 1 map left (decider)
+                if len(available_maps) == 1:
+                    break
+
+            st.write(f"**Remaining map(s) (potential decider or picks):** {', '.join(available_maps)}")
