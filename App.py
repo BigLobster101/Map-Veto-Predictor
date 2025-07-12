@@ -66,7 +66,7 @@ with tab2:
         # Clean columns again here if needed
         df.columns = df.columns.str.strip()
 
-        # Filter data for selected teams
+        # Filter data for selected teams (both ways)
         filtered_df = df[
             ((df["Team 1"] == team1_sim) & (df["Team 2"] == team2_sim)) |
             ((df["Team 1"] == team2_sim) & (df["Team 2"] == team1_sim))
@@ -88,10 +88,6 @@ with tab2:
 
             def get_weights(ban_style):
                 return BO1_WEIGHTS if ban_style.upper() == "BO1" else BO3_WEIGHTS
-
-            # Build preference scores per team per map
-            # Score = sum over matches of weighted veto step where map appeared for that team
-            # For each row (match), get team-specific weights
 
             # Initialize dicts to hold cumulative scores
             team_scores = {
@@ -115,13 +111,12 @@ with tab2:
                     if not map_name or map_name not in map_pool:
                         continue
 
-                    # Team 1 banned/picked at step i => apply weight to Team 1 preference (dislike if negative)
+                    # Corrected lines with proper quotes
                     if row["Team 1"] in team_scores:
-                        team_scores[row["Team 1]][map_name] += weights[i-1]
+                        team_scores[row["Team 1"]][map_name] += weights[i-1]
 
-                    # Team 2 banned/picked at step i => apply weight to Team 2 preference
                     if row["Team 2"] in team_scores:
-                        team_scores[row["Team 2]][map_name] += weights[i-1]
+                        team_scores[row["Team 2"]][map_name] += weights[i-1]
 
             # Convert scores to DataFrame for plotting
             df_scores = pd.DataFrame(team_scores).fillna(0)
@@ -146,26 +141,4 @@ with tab2:
             bans = []
 
             # Alternate banning starting with Team 1
-            banning_order = [team1_sim, team2_sim] * 4  # max 8 bans possible, for BO3 or BO1
-
-            for banning_team in banning_order:
-                # From available maps, ban the map with lowest preference score for banning team
-                team_pref = df_scores[banning_team]
-                # Filter to only available maps
-                team_pref = team_pref.loc[team_pref.index.isin(available_maps)]
-                if team_pref.empty:
-                    break
-
-                # Map with lowest preference (lowest score)
-                ban_map = team_pref.idxmin()
-                bans.append((banning_team, ban_map))
-                available_maps.remove(ban_map)
-
-                st.write(f"**{banning_team} bans:** {ban_map}")
-
-                # Stop if only 1 map left (decider)
-                if len(available_maps) == 1:
-                    break
-
-            st.write(f"**Remaining map(s) (potential decider or picks):** {', '.join(available_maps)}")
-
+            banning_order = [tea]()_
