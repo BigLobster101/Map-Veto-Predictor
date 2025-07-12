@@ -1,169 +1,139 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
+from io import StringIO
 
-# Map pool you gave me
-MAP_POOL = [
-    "Bank", "Border", "Chalet", "Clubhouse", "Consulate",
-    "Kafe Dostoyevsky", "Lair", "Nighthaven Labs", "Skyscraper"
+map_pool = [
+    "Bank",
+    "Border",
+    "Chalet",
+    "Clubhouse",
+    "Consulate",
+    "Kafe Dostoyevsky",
+    "Lair",
+    "Nighthaven Labs",
+    "Skyscraper"
 ]
 
-st.title("Rainbow Six Siege Map Veto Predictor")
+st.title("R6 Siege Veto Predictor - Paste Data & Simulate")
 
-st.markdown("""
-Paste your veto data below, or edit it directly like an Excel sheet.  
-Columns should be: Team 1, Team 2, Ban Style, Veto 1 ... Veto 9
-""")
+tab1, tab2 = st.tabs(["Data Input & Preview", "Team Map Preferences & Simulation"])
 
-# Expected columns
-default_cols = [
-    "Team 1", "Team 2", "Ban Style",
-    "Veto 1", "Veto 2", "Veto 3", "Veto 4", "Veto 5",
-    "Veto 6", "Veto 7", "Veto 8", "Veto 9"
-]
+with tab1:
+    st.header("Paste past veto data")
+    st.markdown("""
+    Paste veto data including columns:  
+    `Team 1`, `Team 2`, `Ban Style`, `Veto 1` to `Veto 9`  
+    Copy from Excel or elsewhere as tab or comma separated text.
+    """)
+    pasted_data = st.text_area("Paste veto data here (include header)", height=200)
 
-# Empty dataframe with columns
-df = pd.DataFrame(columns=default_cols)
+    df = pd.DataFrame()
+    if pasted_data:
+        try:
+            df = pd.read_csv(StringIO(pasted_data), sep="\t")
+        except Exception:
+            try:
+                df = pd.read_csv(StringIO(pasted_data))
+            except Exception as e:
+                st.error(f"Error reading pasted data: {e}")
 
-# Data editor for paste/edit
-edited_df = st.data_editor(df, num_rows="dynamic", use_container_width=True)
+    if not df.empty:
+        df.columns = df.columns.str.strip()
+        st.subheader("Data Preview")
+        st.dataframe(df)
+    else:
+        st.info("Paste veto data above to preview.")
 
-if not edited_df.empty:
-    # Clean data
-    edited_df.columns = edited_df.columns.str.strip()
-    for col in edited_df.columns:
-        if edited_df[col].dtype == object:
-            edited_df[col] = edited_df[col].astype(str).str.strip()
-    edited_df["Ban Style"] = edited_df["Ban Style"].str.upper()
-    for i in range(1, 10):
-        col = f"Veto {i}"
-        if col in edited_df.columns:
-            edited_df[col] = edited_df[col].str.title()
+with tab2:
+    if df.empty:
+        st.warning("Paste veto data first in the 'Data Input & Preview' tab.")
+    else:
+        df.columns = df.columns.str.strip()
 
-    # Validate maps
-    all_maps = set(pd.unique(edited_df[[f"Veto {i}" for i in range(1,10)]].values.ravel()))
-    all_maps.discard('')  # remove empty string
-    invalid_maps = all_maps - set(MAP_POOL)
-    if invalid_maps:
-        st.warning(f"Unknown maps detected in veto columns: {invalid_maps}")
+        team1_sim = st.text_input("Team 1 for simulation", value="Team A")
+        team2_sim = st.text_input("Team 2 for simulation", value="Team B")
 
-    # Show cleaned preview
-    st.subheader("Cleaned Data Preview")
-    st.dataframe(edited_df)
+        ban_style = st.selectbox("Ban Style", options=["BO1", "BO3"], index=0)
 
-    # Select teams to simulate
-    team1_sim = st.selectbox("Select Team 1 for Simulation", options=sorted(edited_df["Team 1"].unique()))
-    team2_sim = st.selectbox("Select Team 2 for Simulation", options=sorted(edited_df["Team 2"].unique()))
+        BO1_WEIGHTS = [-9, -8, -7, -6, -5, -4, -3, -2, 0]
+        BO3_WEIGHTS = [-5, -4, -3, -2, 2, 3, 4, 5, 0]
 
-    # Filter data for those teams
-    filtered_df = edited_df[(edited_df["Team 1"] == team1_sim) & (edited_df["Team 2"] == team2_sim)]
+        def get_weights(ban_style):
+            return BO1_WEIGHTS if ban_style.upper() == "BO1" else BO3_WEIGHTS
 
-    st.write(f"Filtered {len(filtered_df)} veto phases between {team1_sim} and {team2_sim}")
+        weights = get_weights(ban_style)
 
-    # ---------------------------------------------------------
-    # Weighted preference calculation function
-    # ---------------------------------------------------------
-    def calculate_team_map_preferences(data):
-        # Define weights by veto step for BO1 and BO3 (example weights)
-        weights_bo1 = [-5, -4, -3, -2, -1, 1, 2, 3, 4]  # early ban strongly disliked, late ban less disliked, late picks liked
-        weights_bo3 = [-5, -4, -3, -2, -1, 1, 2, 3, 4]  # can customize per step
+        # Initialize data structures
+        team_map_scores = {}
+        team_game_counts = {}
 
-        team_scores = {}
-        for _, row in data.iterrows():
-            ban_style = row["Ban Style"]
-            weights = weights_bo1 if ban_style == "BO1" else weights_bo3
+        all_teams = pd.unique(df[['Team 1', 'Team 2']].values.ravel())
+
+        for team in all_teams:
+            team_map_scores[team] = {m: 0 for m in map_pool}
+            team_game_counts[team] = 0
+
+        # Accumulate weighted scores for each map per team
+        for _, row in df.iterrows():
+            row_weights = get_weights(row["Ban Style"])
+            # Both teams played this match
+            for team in [row["Team 1"], row["Team 2"]]:
+                team_game_counts[team] += 1
             for i in range(1, 10):
-                map_name = row[f"Veto {i}"]
-                if map_name == '' or map_name not in MAP_POOL:
+                map_name = row.get(f"Veto {i}", "")
+                if map_name not in map_pool:
                     continue
-                # Assign scores to Team 1
-                if row["Team 1"] not in team_scores:
-                    team_scores[row["Team 1"]] = {m: 0 for m in MAP_POOL}
-                # Assign scores to Team 2
-                if row["Team 2"] not in team_scores:
-                    team_scores[row["Team 2"]] = {m: 0 for m in MAP_POOL}
+                # Add weight for both teams for this veto step map
+                team_map_scores[row["Team 1"]][map_name] += row_weights[i-1]
+                team_map_scores[row["Team 2"]][map_name] += row_weights[i-1]
 
-                # Team 1 score add
-                team_scores[row["Team 1"]][map_name] += weights[i-1]
-                # Team 2 score add (invert order of veto for team 2)
-                team_scores[row["Team 2"]][map_name] += weights[8 - (i-1)]
-        return team_scores
+        # Calculate average weighted preference per map per team
+        for team in team_map_scores:
+            count = team_game_counts.get(team, 1)
+            if count > 0:
+                for map_name in team_map_scores[team]:
+                    team_map_scores[team][map_name] /= count
 
-    # ---------------------------------------------------------
-    # Veto simulation based on preferences
-    # ---------------------------------------------------------
-    def simulate_veto(team1, team2, team_prefs, ban_style):
-        # Ban order depends on ban_style, simple example:
-        if ban_style == "BO1":
-            banning_order = [team1, team2] * 3 + [team1]
-            picks_needed = 1
-        else:
-            banning_order = [team1, team2] * 2 + [team1, team2] + [team1, team2]  # example for BO3
-            picks_needed = 3
+        df_scores = pd.DataFrame(team_map_scores).fillna(0)
 
-        available_maps = set(MAP_POOL)
-        bans = []
-        picks = []
+        st.header(f"Map Preferences and Ban Simulation: {team1_sim} vs {team2_sim}")
 
-        for i, team in enumerate(banning_order):
-            # Skip if picks filled
-            if len(picks) >= picks_needed:
-                break
-            prefs = team_prefs.get(team, {m: 0 for m in MAP_POOL})
-
-            # Team picks or bans the map with worst score for bans or best for picks
-            # We treat odd veto numbers as bans, even as picks here for simplicity
-            is_ban = (i < len(banning_order) - picks_needed)
-
-            # Filter available maps and scores
-            maps_scores = {m: prefs[m] for m in available_maps}
-
-            if is_ban:
-                # Ban the map team dislikes most (lowest score)
-                map_to_ban = min(maps_scores, key=maps_scores.get)
-                bans.append((team, map_to_ban))
-                available_maps.remove(map_to_ban)
+        # Show bar charts with scores for both teams
+        for team in [team1_sim, team2_sim]:
+            if team not in df_scores.columns:
+                st.warning(f"No data for team '{team}', showing zeros.")
+                scores = pd.Series([0]*len(map_pool), index=map_pool)
             else:
-                # Pick the map team likes most (highest score)
-                map_to_pick = max(maps_scores, key=maps_scores.get)
-                picks.append((team, map_to_pick))
-                available_maps.remove(map_to_pick)
+                scores = df_scores[team]
 
-        return bans, picks
+            st.subheader(f"{team} Map Preferences (avg weighted score)")
+            st.bar_chart(scores.sort_values(ascending=False))
 
-    # ---------------------------------------------------------
-    # Calculate preferences
-    # ---------------------------------------------------------
-    team_preferences = calculate_team_map_preferences(edited_df)
+            # Show the raw preference values for debugging
+            st.write(scores.sort_values(ascending=False))
 
-    # ---------------------------------------------------------
-    # Tabs for Map Preference and Simulation
-    # ---------------------------------------------------------
-    tab1, tab2 = st.tabs(["Team Map Preferences", "Veto Simulation"])
+        st.subheader("Simulated Ban Phase")
 
-    with tab1:
-        st.subheader("Team Map Preference Scores")
-        # Show scores in a dataframe format: team rows, map columns
-        df_scores = pd.DataFrame.from_dict(team_preferences, orient='index')
-        st.dataframe(df_scores.style.background_gradient(cmap='RdYlGn', axis=1))
+        available_maps = set(map_pool)
+        bans = []
 
-    with tab2:
-        st.subheader("Simulated Veto Phase")
+        banning_order = [team1_sim, team2_sim] * 4  # up to 8 bans alternating
 
-        # Get Ban Style from filtered data or fallback
-        ban_style = "BO1"
-        if not filtered_df.empty:
-            ban_style = filtered_df.iloc[0]["Ban Style"]
+        for banning_team in banning_order:
+            if banning_team not in df_scores.columns:
+                # No data, ban lowest alphabetically
+                ban_map = sorted(available_maps)[0]
+                st.write(f"Warning: No data for {banning_team}, banning {ban_map} randomly")
+            else:
+                team_pref = df_scores[banning_team].loc[df_scores.index.isin(available_maps)]
+                ban_map = team_pref.idxmin()  # ban the map with lowest score
 
-        bans, picks = simulate_veto(team1_sim, team2_sim, team_preferences, ban_style)
+            bans.append((banning_team, ban_map))
+            available_maps.remove(ban_map)
 
-        st.write(f"Ban Style used: {ban_style}")
-        st.write("Bans:")
-        for t, m in bans:
-            st.write(f"{t} bans {m}")
-        st.write("Picks:")
-        for t, m in picks:
-            st.write(f"{t} picks {m}")
+            st.write(f"**{banning_team} bans:** {ban_map}")
 
-else:
-    st.info("Paste your veto data above to get started.")
+            if len(available_maps) == 1:
+                break
+
+        st.write(f"**Remaining map(s):** {', '.join(available_maps)}")
