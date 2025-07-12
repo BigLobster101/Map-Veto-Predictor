@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+from io import StringIO
 
 # Map pool
 map_pool = [
@@ -14,46 +15,55 @@ map_pool = [
     "Skyscraper"
 ]
 
-st.title("R6 Siege Veto Predictor - Manual Data Entry")
+st.title("R6 Siege Veto Predictor - Paste Data & Simulate")
 
-# --- Manual data entry ---
+# --- Choose teams for simulation ---
 
-st.header("Enter past veto data manually")
+st.header("Select Teams for Simulation")
 
-num_rows = st.number_input("How many past matches to enter?", min_value=1, max_value=20, value=3)
+team1_sim = st.text_input("Team 1 (Starts ban) for simulation", value="Team A")
+team2_sim = st.text_input("Team 2 for simulation", value="Team B")
 
-data = {
-    "Team 1": [],
-    "Team 2": [],
-    "Ban Style": [],
-}
+st.markdown("---")
 
-for i in range(1, 10):
-    data[f"Veto {i}"] = []
+# --- Paste veto data ---
 
-for row_idx in range(num_rows):
-    st.markdown(f"### Match #{row_idx+1}")
-    team1 = st.text_input(f"Team 1 (Starts ban) [{row_idx+1}]", key=f"team1_{row_idx}")
-    team2 = st.text_input(f"Team 2 [{row_idx+1}]", key=f"team2_{row_idx}")
-    ban_style = st.selectbox(f"Ban Style [{row_idx+1}]", options=["BO1", "BO3"], key=f"banstyle_{row_idx}")
+st.header("Paste past veto data here")
 
-    vetoes = []
-    for i in range(1, 10):
-        veto = st.selectbox(f"Veto {i} [{row_idx+1}]", options=[""] + map_pool, key=f"veto_{i}_{row_idx}")
-        vetoes.append(veto)
+st.markdown("""
+**Instructions:**  
+Copy your veto data from Excel or elsewhere, including columns:  
+`Team 1`, `Team 2`, `Ban Style`, `Veto 1`, `Veto 2`, ..., `Veto 9`  
+Paste below as tab-separated or comma-separated text.
+""")
 
-    data["Team 1"].append(team1)
-    data["Team 2"].append(team2)
-    data["Ban Style"].append(ban_style)
-    for i in range(1, 10):
-        data[f"Veto {i}"].append(vetoes[i-1])
+pasted_data = st.text_area("Paste veto data (include header row)", height=200)
 
-df = pd.DataFrame(data)
+df = pd.DataFrame()
 
-st.subheader("Entered Veto Data")
-st.dataframe(df)
+if pasted_data:
+    try:
+        # Try reading as CSV with tab separator first (for Excel paste)
+        df = pd.read_csv(StringIO(pasted_data), sep="\t")
+    except Exception:
+        try:
+            # Fallback: try comma-separated
+            df = pd.read_csv(StringIO(pasted_data))
+        except Exception as e:
+            st.error(f"Error reading pasted data: {e}")
 
-# ---- Here you add your veto prediction / simulation logic using 'df' as your data source ----
-# Example placeholder:
-st.info("Now use the entered data for predictions or simulations!")
+if not df.empty:
+    st.subheader("Pasted Veto Data Preview")
+    st.dataframe(df)
+
+    # Filter data for simulation teams only (optional)
+    filtered_df = df[(df["Team 1"] == team1_sim) & (df["Team 2"] == team2_sim)]
+
+    st.subheader(f"Filtered Data for {team1_sim} vs {team2_sim}")
+    st.dataframe(filtered_df)
+
+    # Here you can add your veto prediction logic using filtered_df
+
+else:
+    st.info("Paste your veto data above to see the preview.")
 
