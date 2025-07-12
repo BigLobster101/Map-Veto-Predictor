@@ -9,8 +9,9 @@ uploaded_file = st.file_uploader("📤 Upload your `veto_data.xlsx` file", type=
 
 # Step 2: Map Pool and Veto Step Weights
 map_pool = [
-    "Bank", "Oregon", "Clubhouse", "Chalet", "Kafe", "Theme Park",
-    "Skyscraper", "Consulate", "Border"
+    map_pool = [
+    "Bank", "Border", "Chalet", "Clubhouse", "Consulate",
+    "Kafe Dostoyevsky", "Lair", "Nighthaven Labs", "Skyscraper"
 ]
 
 step_weights = {
